@@ -1,83 +1,59 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageDraw
 import zipfile
 import io
-import base64
-from streamlit_drawable_canvas import st_canvas
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Drag-and-Drop Email Slicer", layout="wide")
-st.title('✂️ İnteraktif "Sürükle-Bırak" Email Image Slicer')
+st.set_page_config(page_title="Email Image Slicer Pro", layout="wide")
+st.title('✂️ Profesyonel Email Image Slicer')
 
-# Ayarlar
+# Yan Menü Ayarları
+st.sidebar.header("⚙️ Kesim Ayarları")
+num_parts = st.sidebar.number_input("Toplam Kaç Parça?", min_value=2, max_value=10, value=3)
 img_quality = st.sidebar.slider("Görsel Kalitesi", 10, 100, 90)
 
 uploaded_file = st.file_uploader("Görseli Yükleyin", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file is not None:
+    # 1. Görseli Hazırla
     img = Image.open(uploaded_file)
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     
     w, h = img.size
-    display_width = 600 
-    scale_factor = display_width / w
-    display_height = int(h * scale_factor)
-
-    # GÖRSELİ BASE64 FORMATINA ÇEVİR (Hata giderici kısım)
-    buffered = io.BytesIO()
-    img.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
-    bg_image_data = f"data:image/jpeg;base64,{img_str}"
-
-    st.subheader("🖼️ Görsel Üzerinde Çizgileri Sürükle")
     
-    # Başlangıç çizgileri (Konumları düzeltildi)
-    initial_drawing = {
-        "version": "4.4.0",
-        "objects": [
-            {"type": "line", "left": 0, "top": int(display_height * 0.25), "width": display_width, "height": 0, "stroke": "red", "strokeWidth": 5, "selectable": True},
-            {"type": "line", "left": 0, "top": int(display_height * 0.50), "width": display_width, "height": 0, "stroke": "red", "strokeWidth": 5, "selectable": True},
-            {"type": "line", "left": 0, "top": int(display_height * 0.75), "width": display_width, "height": 0, "stroke": "red", "strokeWidth": 5, "selectable": True},
-        ]
-    }
-
-    # Tuvali Oluştur
-    canvas_result = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.3)",
-        stroke_width=5,
-        stroke_color="red",
-        background_image=Image.open(uploaded_file), # Alternatif deneme
-        update_streamlit=True,
-        width=display_width,
-        height=display_height,
-        drawing_mode="transform",
-        initial_drawing=initial_drawing,
-        display_toolbar=False,
-        key="canvas",
-    )
-
-    # Eğer hata devam ederse 'background_image=Image.open(uploaded_file)' kısmını 
-    # 'background_image=img' olarak da deneyebilirsin ama yukarıdaki mantık en sağlamıdır.
-
-    cut_pixels = []
-    if canvas_result.json_data is not None:
-        objects = canvas_result.json_data["objects"]
-        for obj in objects:
-            if obj["type"] == "line":
-                # Canvas kütüphanesi 'top' değerini merkeze göre veya skalaya göre verebilir
-                # En sağlıklı koordinat okuma:
-                y_on_display = obj["top"]
-                y_original = int(y_on_display / scale_factor)
-                if 0 < y_original < h:
-                    cut_pixels.append(y_original)
-
-    cut_pixels = sorted(list(set(cut_pixels)))
+    # 2. Manuel Kesim Noktaları (Yüzde bazlı sliderlar)
+    st.sidebar.subheader("📍 Kesim Çizgilerini Ayarla")
+    cut_points_pct = []
+    for i in range(num_parts - 1):
+        # Varsayılan olarak eşit dağıtılmış noktalar sunar
+        default_val = int((i + 1) * 100 / num_parts)
+        point = st.sidebar.slider(f"{i+1}. Çizgi Konumu (%)", 0, 100, default_val, key=f"p_{i}")
+        cut_points_pct.append(point)
+    
+    # Noktaları sırala ve piksele çevir
+    cut_points_pct.sort()
+    cut_pixels = [int(p * h / 100) for p in cut_points_pct]
     all_points = [0] + cut_pixels + [h]
 
-    st.write("📍 Kesim Noktaları (Pixel):", cut_pixels)
+    # 3. ÖNİZLEME (Canlı Kırmızı Çizgiler)
+    preview_img = img.copy()
+    draw = ImageDraw.Draw(preview_img)
+    line_width = max(10, int(h / 100)) # Görsel boyutuna göre belirgin çizgi
+    
+    for px in cut_pixels:
+        draw.line([(0, px), (w, px)], fill="red", width=line_width)
+        # Çizginin hemen üzerine yüzde bilgisini yaz
+        draw.text((20, px - (line_width*2)), f"KESIM NOKTASI: %{int(px/h*100)}", fill="red")
 
-    if st.button("✂️ Paketi Hazırla"):
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("🖼️ Kesim Önizlemesi")
+        st.image(preview_img, caption="Çizgileri yan menüdeki sliderlar ile aşağı-yukarı oynatabilirsin.", use_container_width=True)
+
+    # 4. İŞLEME VE ZIP
+    if st.button("🚀 Paketi Hazırla ve İndir"):
         zip_buffer = io.BytesIO()
         html_rows = ""
         
@@ -95,16 +71,24 @@ if uploaded_file is not None:
                     img_path = f"images/{img_name}"
                     zip_f.writestr(img_path, img_byte_arr.getvalue())
                     
+                    # HTML Satırı
                     p_w, p_h = part.size
-                    html_rows += f'<tr><td align="center"><img src="{img_path}" width="600" height="{int(p_h * (600/p_w))}" style="display:block;width:100%;height:auto;border:0;" border="0" /></td></tr>'
+                    display_h = int(p_h * (600/p_w))
+                    html_rows += f'<tr><td align="center"><img src="{img_path}" width="600" height="{display_h}" style="display:block;width:100%;height:auto;border:0;" border="0" /></td></tr>'
 
             full_html = f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><style>@media screen and (max-width:600px){{.container{{width:100% !important}}}}</style></head><body style="margin:0;padding:0;background-color:#f4f4f4;"><table width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" class="container" style="background-color:#ffffff;">{html_rows}</table></td></tr></table></body></html>'
             zip_f.writestr("index.html", full_html)
             
-        st.success("✅ Paket Hazırlandı!")
+        st.success("✅ Mailing paketi başarıyla oluşturuldu!")
         st.download_button(
-            label="🎁 İndir", 
+            label="🎁 ZIP Dosyasını İndir", 
             data=zip_buffer.getvalue(), 
-            file_name="pro_mailing_paketi.zip", 
+            file_name="mailing_paketi.zip", 
             mime="application/zip"
         )
+
+    with col2:
+        st.subheader("📊 Parça Detayları")
+        for i in range(len(all_points)-1):
+            size = all_points[i+1] - all_points[i]
+            st.write(f"**{i+1}. Parça:** {size}px yükseklik")
