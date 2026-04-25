@@ -7,16 +7,10 @@ import io
 st.set_page_config(page_title="Color-Coded Image Slicer", layout="wide")
 st.title('🎨 Renk Kodlu Profesyonel Image Slicer')
 
-# Profesyonel Renk Paleti (Belirgin ve Kontrast Renkler)
+# Kontrastı Yüksek Renk Paleti
 COLORS = [
-    "#FF0000", # Kırmızı
-    "#00FF00", # Yeşil
-    "#0000FF", # Mavi
-    "#FF00FF", # Magenta
-    "#FF8C00", # Turuncu
-    "#00CED1", # Turkuaz
-    "#8A2BE2", # Mor
-    "#FFD700", # Altın
+    "#FF0000", "#00FF00", "#0000FF", "#FF00FF", 
+    "#FF8C00", "#00CED1", "#8A2BE2", "#FFD700"
 ]
 
 # Yan Menü Ayarları
@@ -37,31 +31,27 @@ if uploaded_file is not None:
     st.sidebar.subheader("📍 Çizgi Konumları")
     cut_points_data = []
     
-    for i in range(num_parts - 1):
+    for i in range(int(num_parts) - 1):
         color = COLORS[i % len(COLORS)]
         default_val = int((i + 1) * 100 / num_parts)
         
-        # Slider başlığına renkli bir emoji veya metin ekleyelim
-        st.sidebar.markdown(f"<span style='color:{color}; font-weight:bold;'>▆ {i+1}. Çizgi</span>", unsafe_allow_index=True, unsafe_allow_html=True)
+        st.sidebar.markdown(f"<span style='color:{color}; font-weight:bold;'>▆ {i+1}. Çizgi</span>", unsafe_allow_html=True)
         point = st.sidebar.slider(f"Konum %", 0, 100, default_val, key=f"p_{i}", label_visibility="collapsed")
-        
         cut_points_data.append({"pixel": int(point * h / 100), "color": color, "pct": point})
     
-    # Noktaları piksel değerine göre sırala (HTML yapısının bozulmaması için)
+    # Sıralama ve Piksel Hesaplama
     cut_points_data.sort(key=lambda x: x["pixel"])
     all_points = [0] + [d["pixel"] for d in cut_points_data] + [h]
 
     # 3. ÖNİZLEME (Renkli Çizgiler)
     preview_img = img.copy()
     draw = ImageDraw.Draw(preview_img)
-    line_width = max(12, int(h / 80)) # Daha belirgin çizgiler
+    line_width = max(12, int(h / 80))
     
     for data in cut_points_data:
         px = data["pixel"]
         color = data["color"]
-        # Çizgiyi çiz
         draw.line([(0, px), (w, px)], fill=color, width=line_width)
-        # Etiket ekle
         draw.rectangle([0, px - line_width*3, 250, px], fill=color)
         draw.text((10, px - line_width*2.5), f"KESIM: %{data['pct']}", fill="white")
 
@@ -91,14 +81,19 @@ if uploaded_file is not None:
                     zip_f.writestr(img_path, img_byte_arr.getvalue())
                     
                     p_w, p_h = part.size
-                    display_h = int(p_h * (600/p_w))
-                    html_rows += f'<tr><td align="center"><img src="{img_path}" width="600" height="{display_h}" style="display:block;width:100%;height:auto;border:0;" border="0" /></td></tr>'
+                    row_h = int(p_h * (600/p_w))
+                    html_rows += f'<tr><td align="center"><img src="{img_path}" width="600" height="{row_h}" style="display:block;width:100%;height:auto;border:0;" border="0" /></td></tr>'
 
             full_html = f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><style>@media screen and (max-width:600px){{.container{{width:100% !important}}}}</style></head><body style="margin:0;padding:0;background-color:#f4f4f4;"><table width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" class="container" style="background-color:#ffffff;">{html_rows}</table></td></tr></table></body></html>'
             zip_f.writestr("index.html", full_html)
             
-        st.success("✅ Renk kodlu kesim paketi hazır!")
-        st.download_button(label="🎁 ZIP İndir", data=zip_buffer.getvalue(), file_name="renkli_mailing_paketi.zip", mime="application/zip")
+        st.success("✅ Paket Hazır!")
+        st.download_button(label="🎁 ZIP İndir", data=zip_buffer.getvalue(), file_name="mailing_paketi.zip", mime="application/zip")
 
     with col2:
-        st.subheader("📊 Dil
+        st.subheader("📊 Dilim Detayları")
+        for i in range(len(all_points)-1):
+            size = all_points[i+1] - all_points[i]
+            st.write(f"📂 **{i+1}. Parça:** {size}px")
+            if i < len(cut_points_data):
+                st.markdown(f"<div style='border-left: 5px solid {cut_points_data[i]['color']}; padding-left:10px;'>Ayrım: %{cut_points_data[i]['pct']}</div>", unsafe_allow_html=True)
