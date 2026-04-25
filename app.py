@@ -2,16 +2,16 @@ import streamlit as st
 from PIL import Image
 import zipfile
 import io
+import os
 
-st.set_page_config(page_title="Email Image Slicer", layout="wide")
-st.title("✂️ Email Image Slicer")
+st.set_page_config(page_title="Email Image Slicer Pro", layout="wide")
+st.title("✂️ Email Image Slicer (Klasör Yapılı)")
 
 uploaded_file = st.file_uploader("Görseli Buraya Bırak", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file is not None:
     img = Image.open(uploaded_file)
     
-    # HATA DÜZELTMESİ: Eğer görsel PNG/Şeffaf ise JPEG'e uygun RGB moduna çevir
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
         
@@ -31,22 +31,28 @@ if uploaded_file is not None:
             part_w, part_h = part.size
             
             img_byte_arr = io.BytesIO()
-            # Artık güvenle JPEG olarak kaydedebiliriz
             part.save(img_byte_arr, format='JPEG', quality=90)
+            
+            # YENİLİK: Dosya adını klasör yoluyla birlikte tanımlıyoruz
             img_name = f"image_{i+1}.jpg"
+            img_path = f"images/{img_name}"
             
-            zip_f.writestr(img_name, img_byte_arr.getvalue())
+            # ZIP içine 'images' klasörü oluşturup içine atar
+            zip_f.writestr(img_path, img_byte_arr.getvalue())
             
+            # HTML yolunu 'images/' klasörüne bakacak şekilde güncelliyoruz
             display_h = int(part_h * (600/part_w))
-            html_rows += f'<tr><td align="center"><img src="{img_name}" width="600" height="{display_h}" style="display:block;width:100%;height:auto;border:0;" border="0" /></td></tr>'
+            html_rows += f'<tr><td align="center"><img src="{img_path}" width="600" height="{display_h}" style="display:block;width:100%;height:auto;border:0;" border="0" /></td></tr>'
 
         full_html = f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><style>@media screen and (max-width:600px){{.container{{width:100% !important}}}}</style></head><body style="margin:0;padding:0;background-color:#f4f4f4;"><table width="100%" border="0" cellpadding="0" cellspacing="0"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" class="container" style="background-color:#ffffff;">{html_rows}</table></td></tr></table></body></html>'
+        
+        # HTML ana dizinde kalır
         zip_f.writestr("index.html", full_html)
 
-    st.success("✅ İşlem Tamamlandı! Görsel RGB moduna optimize edildi.")
+    st.success("✅ İşlem Tamamlandı! Görseller 'images' klasörüne yerleştirildi.")
     st.download_button(
-        label="🎁 ZIP Olarak İndir (Görseller + HTML)", 
+        label="🎁 Profesyonel Mailing Paketini İndir", 
         data=zip_buffer.getvalue(), 
-        file_name="mailing_paketi.zip", 
+        file_name="mailing_pro_paket.zip", 
         mime="application/zip"
     )
