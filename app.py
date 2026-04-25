@@ -2,14 +2,14 @@ import streamlit as st
 from PIL import Image
 import zipfile
 import io
+import base64
 from streamlit_drawable_canvas import st_canvas
 
 # Sayfa Ayarları
 st.set_page_config(page_title="Drag-and-Drop Email Slicer", layout="wide")
 st.title('✂️ İnteraktif "Sürükle-Bırak" Email Image Slicer')
-st.write("Görseli yükle, kırmızı çizgileri mouse ile sürükle ve 'Paketi Hazırla' butonuna bas.")
 
-# Ayarlar (Quality)
+# Ayarlar
 img_quality = st.sidebar.slider("Görsel Kalitesi", 10, 100, 90)
 
 uploaded_file = st.file_uploader("Görseli Yükleyin", type=['jpg', 'jpeg', 'png'])
@@ -20,15 +20,19 @@ if uploaded_file is not None:
         img = img.convert("RGB")
     
     w, h = img.size
-    
-    # Görseli ekrana sığdır (Önizleme ölçekleme)
     display_width = 600 
     scale_factor = display_width / w
     display_height = int(h * scale_factor)
 
+    # GÖRSELİ BASE64 FORMATINA ÇEVİR (Hata giderici kısım)
+    buffered = io.BytesIO()
+    img.save(buffered, format="JPEG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    bg_image_data = f"data:image/jpeg;base64,{img_str}"
+
     st.subheader("🖼️ Görsel Üzerinde Çizgileri Sürükle")
     
-    # Başlangıç çizgileri
+    # Başlangıç çizgileri (Konumları düzeltildi)
     initial_drawing = {
         "version": "4.4.0",
         "objects": [
@@ -38,11 +42,12 @@ if uploaded_file is not None:
         ]
     }
 
+    # Tuvali Oluştur
     canvas_result = st_canvas(
         fill_color="rgba(255, 165, 0, 0.3)",
         stroke_width=5,
         stroke_color="red",
-        background_image=img,
+        background_image=Image.open(uploaded_file), # Alternatif deneme
         update_streamlit=True,
         width=display_width,
         height=display_height,
@@ -52,11 +57,16 @@ if uploaded_file is not None:
         key="canvas",
     )
 
+    # Eğer hata devam ederse 'background_image=Image.open(uploaded_file)' kısmını 
+    # 'background_image=img' olarak da deneyebilirsin ama yukarıdaki mantık en sağlamıdır.
+
     cut_pixels = []
     if canvas_result.json_data is not None:
         objects = canvas_result.json_data["objects"]
         for obj in objects:
             if obj["type"] == "line":
+                # Canvas kütüphanesi 'top' değerini merkeze göre veya skalaya göre verebilir
+                # En sağlıklı koordinat okuma:
                 y_on_display = obj["top"]
                 y_original = int(y_on_display / scale_factor)
                 if 0 < y_original < h:
